@@ -1,0 +1,7 @@
+{
+  "name": "core-agent-live",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Autonomous crypto paper-trading agent (CORE) running on a GitHub Actions schedule, using real CoinGecko data."
+}
