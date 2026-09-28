@@ -8,25 +8,24 @@
 <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
   :root{ --bg:#0A0F1A; --bg-panel:#111A2B; --line:#1E2A40; --text:#E7ECF5; --muted:#7C8AA6;
-    --power:#34E5B0; --decay:#FF5D6C; --ascend:#F5C36B; --idle:#3B4A66; }
+    --power:#34E5B0; --decay:#FF5D6C; --idle:#3B4A66; }
   *{box-sizing:border-box;}
   body{ margin:0; background:var(--bg); color:var(--text); font-family:'Inter',sans-serif; padding:20px 16px 60px; }
   .wrap{ max-width:520px; margin:0 auto; }
   h1{ font-family:'Chakra Petch',sans-serif; font-size:24px; margin:0 0 4px; }
   h1 span{ color:var(--muted); font-weight:500; font-size:15px; }
+  .status-row{ display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+  .dot{ width:8px; height:8px; border-radius:50%; background:var(--idle); }
+  .dot.ok{ background:var(--power); box-shadow:0 0 8px var(--power); }
+  .dot.err{ background:var(--decay); box-shadow:0 0 8px var(--decay); }
   .sub{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); margin-bottom:18px; }
-  .core-stage{ display:flex; align-items:center; justify-content:center; height:200px; position:relative; }
-  .orb{ width:120px; height:120px; border-radius:50%; transition: all 1s ease; }
-  .readout{ position:absolute; text-align:center; }
-  .pnum{ font-family:'Chakra Petch',sans-serif; font-size:34px; font-weight:700; }
-  .ptier{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); letter-spacing:.15em; }
   .stat-row{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:var(--line); border:1px solid var(--line); border-radius:12px; overflow:hidden; margin-bottom:16px; }
-  .stat{ background:var(--bg-panel); padding:12px; text-align:center; }
-  .stat .l{ font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; margin-bottom:4px; }
-  .stat .v{ font-family:'IBM Plex Mono',monospace; font-size:15px; font-weight:600; }
+  .stat{ background:var(--bg-panel); padding:14px 12px; text-align:center; }
+  .stat .l{ font-family:'IBM Plex Mono',monospace; font-size:10px; color:var(--muted); text-transform:uppercase; margin-bottom:5px; }
+  .stat .v{ font-family:'IBM Plex Mono',monospace; font-size:17px; font-weight:600; }
   .pos{ color:var(--power); } .neg{ color:var(--decay); }
   .panel{ background:var(--bg-panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
-  .panel-title{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); text-transform:uppercase; margin-bottom:10px; }
+  .panel-title{ font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--muted); text-transform:uppercase; margin-bottom:10px; display:flex; justify-content:space-between; }
   .log-row{ display:flex; justify-content:space-between; padding:7px 0; border-bottom:1px solid var(--line); font-family:'IBM Plex Mono',monospace; font-size:12px; }
   .log-row:last-child{ border:none; }
   .muted{ color:var(--muted); }
@@ -37,12 +36,8 @@
 <body>
 <div class="wrap">
   <h1>CORE <span>// live agent dashboard</span></h1>
-  <div class="sub" id="lastRun">loading state.json…</div>
-
-  <div class="core-stage">
-    <div class="orb" id="orb"></div>
-    <div class="readout"><div class="pnum" id="pnum">—</div><div class="ptier" id="ptier">—</div></div>
-  </div>
+  <div class="status-row"><span class="dot" id="statusDot"></span><span class="sub" id="lastRun" style="margin:0;">loading state.json…</span></div>
+  <div class="sub" id="errLine"></div>
 
   <div class="stat-row">
     <div class="stat"><div class="l">Balance</div><div class="v" id="balance">—</div></div>
@@ -51,7 +46,7 @@
   </div>
 
   <div class="panel">
-    <div class="panel-title">Open positions</div>
+    <div class="panel-title"><span>Open positions</span><span id="posCount">0/3</span></div>
     <div id="positions"><div class="muted">none</div></div>
   </div>
 
@@ -60,19 +55,20 @@
     <div id="trades"><div class="muted">none yet</div></div>
   </div>
 
+  <div class="panel">
+    <div class="panel-title">Strategy (fixed, mechanical)</div>
+    <div class="muted" style="font-size:12px; line-height:1.7;">
+      Momentum entry: buy on a 0.15% uptick between polls · Take profit: +2.0% · Stop loss: -1.0% ·
+      Fixed 15% of balance per trade · Max 3 concurrent positions (BTC/ETH/SOL) · No survival meter, no scaling — same rules every cycle.
+    </div>
+  </div>
+
   <div class="note">
-    This page only reads <code>state.json</code>, updated every ~15 minutes by a GitHub Actions workflow that runs the actual trading cycle server-side — real CoinGecko prices, no simulation of this dashboard itself. See the <a href="https://github.com/Aarav-python9599/core-agent-live" style="color:var(--power)">repo</a> and its Actions tab for run history.
+    This page only reads <code>state.json</code>, updated every ~15 minutes by a GitHub Actions workflow that runs the actual trading cycle server-side — real prices (CoinGecko, falling back to Kraken), no simulation of this dashboard itself. See the <a href="https://github.com/Aarav-python9599/core-agent-live" style="color:var(--power)">repo</a> and its Actions tab for run history.
   </div>
 </div>
 
 <script>
-function tierFor(p){
-  if(p<10) return {label:'STARVING', color:'#3B4A66'};
-  if(p<30) return {label:'WEAK', color:'#6FA8FF'};
-  if(p<60) return {label:'STABLE', color:'#34E5B0'};
-  if(p<85) return {label:'HEALTHY', color:'#22C99A'};
-  return {label:'THRIVING', color:'#F5C36B'};
-}
 function fmtUsd(n){ return (n<0?'-$':'$')+Math.abs(n).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
 
 async function load(){
@@ -81,20 +77,12 @@ async function load(){
     if(!res.ok) throw new Error('HTTP '+res.status);
     const s = await res.json();
 
+    const ok = !s.lastError;
+    document.getElementById('statusDot').className = 'dot ' + (s.lastRun ? (ok?'ok':'err') : '');
     document.getElementById('lastRun').textContent = s.lastRun
-      ? `cycle ${s.cycles} · last run ${new Date(s.lastRun).toLocaleString()} · via ${s.feedSource||'?'}`
+      ? `cycle ${s.cycles} · last run ${new Date(s.lastRun).toLocaleString()}${s.feedSource ? ' · via '+s.feedSource : ''}`
       : 'no runs yet';
-    if(s.lastError){
-      document.getElementById('lastRun').innerHTML += `<br><span class="err">last error: ${s.lastError}</span>`;
-    }
-
-    const t = tierFor(s.power);
-    const orb = document.getElementById('orb');
-    orb.style.background = `radial-gradient(circle at 35% 30%, ${t.color}, ${t.color}22 55%, transparent 72%)`;
-    orb.style.boxShadow = `0 0 40px 20px ${t.color}55`;
-    document.getElementById('pnum').textContent = Math.round(s.power);
-    document.getElementById('pnum').style.color = t.color;
-    document.getElementById('ptier').textContent = s.dead ? 'FLATLINED' : (s.fighting ? 'LAST STAND' : t.label);
+    document.getElementById('errLine').innerHTML = s.lastError ? `<span class="err">last error: ${s.lastError}</span>` : '';
 
     document.getElementById('balance').textContent = fmtUsd(s.balance);
     const pnl = s.balance - s.startBalance;
@@ -104,15 +92,14 @@ async function load(){
     const total = s.wins+s.losses;
     document.getElementById('winrate').textContent = total ? Math.round(s.wins/total*100)+'%' : '—';
 
-    const posEl = document.getElementById('positions');
     const posKeys = Object.keys(s.positions||{});
-    posEl.innerHTML = posKeys.length
+    document.getElementById('posCount').textContent = posKeys.length+'/3';
+    document.getElementById('positions').innerHTML = posKeys.length
       ? posKeys.map(k=>`<div class="log-row"><span>${k}</span><span>${s.positions[k].qty.toFixed(6)} units</span></div>`).join('')
       : '<div class="muted">none</div>';
 
-    const tradesEl = document.getElementById('trades');
     const trades = (s.trades||[]).slice(-15).reverse();
-    tradesEl.innerHTML = trades.length
+    document.getElementById('trades').innerHTML = trades.length
       ? trades.map(t=>`<div class="log-row"><span class="muted">${new Date(t.time).toLocaleString()}</span><span>${t.side} ${t.asset}${t.pnl?' · '+fmtUsd(t.pnl):''}</span></div>`).join('')
       : '<div class="muted">none yet</div>';
   }catch(e){

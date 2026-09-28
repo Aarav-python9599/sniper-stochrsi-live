@@ -1,20 +1,26 @@
 // CORE agent — headless cycle, run on a schedule by GitHub Actions.
-// Same mechanics as the browser version: real prices only, hunger/vitality survival,
-// multi-position capacity scaled by Vitality, Last Stand fight-for-survival.
+// Mechanical momentum trading on real prices. No survival mechanic, no "vitality" —
+// pure rule-based entries/exits, fixed position sizing.
 import { readFile, writeFile } from 'fs/promises';
 
 const STATE_PATH = new URL('./state.json', import.meta.url);
-const ASSET_META = { bitcoin: { sym: 'BTC' }, ethereum: { sym: 'ETH' }, solana: { sym: 'SOL' } };
-const LAST_STAND_LIMIT = 6;
+const ASSETS = { bitcoin: 'BTC', ethereum: 'ETH', solana: 'SOL' };
+const BUY_TRIGGER = 0.15;   // % uptick to enter
+const TAKE_PROFIT = 2.0;    // % gain to exit
+const STOP_LOSS = 1.0;      // % loss to exit
+const POSITION_SIZE = 0.15; // fixed 15% of balance per trade
+const MAX_POSITIONS = 3;    // one per asset, at most
+
+// CoinGecko blocks requests with no/default User-Agent as an anti-bot measure —
+// this is the fix for the 403s seen from GitHub Actions runners.
+const HEADERS = { 'User-Agent': 'Mozilla/5.0 (compatible; core-agent/1.0; +https://github.com/Aarav-python9599/core-agent-live)' };
 
 function defaultState() {
   return {
-    balance: 10000, startBalance: 10000, power: 50,
+    balance: 10000, startBalance: 10000,
     positions: {}, trades: [], wins: 0, losses: 0,
-    fighting: false, fightCycles: 0, dead: false,
     priceHistory: { bitcoin: [], ethereum: [], solana: [] },
-    strategy: { mode: 'momentum', buyTrigger: 0.15, takeProfit: 2.0, stopLoss: 1.0, sizeBase: 10, trailingStop: true },
-    lastRun: null, cycles: 0
+    lastRun: null, cycles: 0, lastError: null, feedSource: null
   };
 }
 
@@ -31,56 +37,41 @@ async function saveState(state) {
   await writeFile(STATE_PATH, JSON.stringify(state, null, 2));
 }
 
-async function fetchMarket() {
-  const ids = Object.keys(ASSET_META).join(',');
-  const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`);
+async function fetchFromCoinGecko() {
+  const ids = Object.keys(ASSETS).join(',');
+  const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd`, { headers: HEADERS });
   if (!res.ok) throw new Error('coingecko HTTP ' + res.status);
   const data = await res.json();
   const out = {};
-  Object.keys(ASSET_META).forEach(id => { if (data[id]) out[id] = Number(data[id].usd); });
+  Object.keys(ASSETS).forEach(id => { if (data[id]) out[id] = Number(data[id].usd); });
   if (!Object.keys(out).length) throw new Error('empty coingecko response');
-  return { prices: out, source: 'coingecko' };
+  return out;
 }
 
-function avgOf(arr) { return arr.reduce((a, b) => a + b, 0) / arr.length; }
-
-function maxPositions(power) {
-  if (power >= 85) return 4;
-  if (power >= 60) return 3;
-  if (power >= 30) return 2;
-  return 1;
+// Kraken fallback — different provider entirely, in case CoinGecko blocks this runner's IP range outright
+const KRAKEN_PAIRS = { bitcoin: 'XBTUSD', ethereum: 'ETHUSD', solana: 'SOLUSD' };
+async function fetchFromKraken() {
+  const pairs = Object.values(KRAKEN_PAIRS).join(',');
+  const res = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${pairs}`, { headers: HEADERS });
+  if (!res.ok) throw new Error('kraken HTTP ' + res.status);
+  const data = await res.json();
+  if (data.error && data.error.length) throw new Error('kraken: ' + data.error.join(', '));
+  const out = {};
+  Object.entries(KRAKEN_PAIRS).forEach(([id, pair]) => {
+    // kraken echoes back its own internal pair key, which can differ slightly from what we sent
+    const key = Object.keys(data.result || {}).find(k => k.includes(pair.slice(0, 3)) || k === pair);
+    if (key && data.result[key]) out[id] = Number(data.result[key].c[0]); // c[0] = last trade price
+  });
+  if (!Object.keys(out).length) throw new Error('empty/unmatched kraken response');
+  return out;
 }
 
-function checkEntry(mode, hist, price, strategy) {
-  const prices = hist.map(h => h.p);
-  const n = prices.length;
-  if (mode === 'momentum') {
-    if (n < 2) return false;
-    return price > prices[n - 2] * (1 + strategy.buyTrigger / 100);
+async function fetchMarket() {
+  try { return { prices: await fetchFromCoinGecko(), source: 'coingecko' }; }
+  catch (e1) {
+    try { return { prices: await fetchFromKraken(), source: 'kraken (fallback)' }; }
+    catch (e2) { throw new Error(`coingecko failed (${e1.message}) -> kraken failed (${e2.message})`); }
   }
-  if (mode === 'conservative') {
-    if (n < 2) return false;
-    return price > prices[n - 2] * (1 + (strategy.buyTrigger * 1.8) / 100);
-  }
-  return false;
-}
-
-function checkExit(price, position, strategy) {
-  const pnlPct = (price - position.entryPrice) / position.entryPrice * 100;
-  if (pnlPct >= strategy.takeProfit) return true;
-  if (strategy.trailingStop) {
-    const fromPeak = (price - position.peak) / position.peak * 100;
-    if (fromPeak <= -strategy.stopLoss) return true;
-  } else if (pnlPct <= -strategy.stopLoss) return true;
-  return false;
-}
-
-function adjustPower(state, delta) { state.power = Math.max(0, Math.min(100, state.power + delta)); }
-
-function evaluateSurvival(state) {
-  if (state.dead) return;
-  if (state.power > 0) { if (state.fighting) { state.fighting = false; state.fightCycles = 0; } return; }
-  if (!state.fighting) { state.fighting = true; state.fightCycles = 0; }
 }
 
 function pushTrade(state, asset, side, price, pnl) {
@@ -91,12 +82,9 @@ function pushTrade(state, asset, side, price, pnl) {
 }
 
 function doBuy(state, asset, price) {
-  let sizePct = (state.strategy.sizeBase / 100) + (state.power / 100) * 0.20;
-  if (state.strategy.mode === 'conservative') sizePct *= 0.55;
-  if (state.fighting) sizePct = 0.04;
-  const spend = state.balance * Math.min(sizePct, 0.6);
+  const spend = state.balance * POSITION_SIZE;
   const qty = spend / price;
-  state.positions[asset] = { entryPrice: price, qty, spend, peak: price };
+  state.positions[asset] = { entryPrice: price, qty, spend };
   pushTrade(state, asset, 'BUY', price);
 }
 
@@ -106,7 +94,6 @@ function doSell(state, asset, price) {
   const pnl = proceeds - pos.spend;
   state.balance += pnl;
   pushTrade(state, asset, 'SELL', price, pnl);
-  adjustPower(state, (pnl / pos.spend) * 400);
   delete state.positions[asset];
 }
 
@@ -131,37 +118,25 @@ async function runCycle() {
     state.priceHistory[asset] = hist;
   });
 
-  const decayFactor = 0.35 + (state.power / 100) * 0.15;
-  adjustPower(state, -0.4 * decayFactor);
-  evaluateSurvival(state);
-
   let traded = [];
-  const cap = maxPositions(state.power);
   let openCount = Object.keys(state.positions).length;
-  Object.keys(ASSET_META).forEach(asset => {
+  Object.keys(ASSETS).forEach(asset => {
     const price = market.prices[asset];
     if (!price) return;
     const hist = state.priceHistory[asset];
     const pos = state.positions[asset];
     if (pos) {
-      pos.peak = Math.max(pos.peak, price);
-      if (checkExit(price, pos, state.strategy)) {
+      const pnlPct = (price - pos.entryPrice) / pos.entryPrice * 100;
+      if (pnlPct >= TAKE_PROFIT || pnlPct <= -STOP_LOSS) {
         doSell(state, asset, price); traded.push(`SELL ${asset}`); openCount--;
       }
-    } else if (openCount < cap) {
-      if (checkEntry(state.strategy.mode, hist, price, state.strategy)) {
+    } else if (openCount < MAX_POSITIONS && hist.length >= 2) {
+      const prevPrice = hist[hist.length - 2].p;
+      if (price > prevPrice * (1 + BUY_TRIGGER / 100)) {
         doBuy(state, asset, price); traded.push(`BUY ${asset}`); openCount++;
       }
     }
   });
-  evaluateSurvival(state);
-
-  if (state.fighting) {
-    state.fightCycles++;
-    if (state.fightCycles > LAST_STAND_LIMIT && Object.keys(state.positions).length === 0) {
-      state.dead = true; state.fighting = false;
-    }
-  }
 
   state.cycles++;
   state.lastRun = new Date().toISOString();
@@ -170,7 +145,7 @@ async function runCycle() {
   await saveState(state);
 
   console.log(`Cycle ${state.cycles} @ ${state.lastRun} via ${market.source}`);
-  console.log(`Vitality: ${Math.round(state.power)} | Balance: $${state.balance.toFixed(2)} | Open: ${Object.keys(state.positions).length}/${cap}`);
+  console.log(`Balance: $${state.balance.toFixed(2)} | Open: ${Object.keys(state.positions).length}/${MAX_POSITIONS}`);
   console.log(traded.length ? `Trades: ${traded.join(', ')}` : 'No trades this cycle');
 }
 
