@@ -1,9 +1,3 @@
-# CORE Agent - Live
-
-Mechanical crypto paper-trading agent, run on a schedule by GitHub Actions (no personal device needed).
-
-- `trade.mjs` - one trading cycle: real prices (CoinGecko, Kraken fallback), momentum entry, fixed TP/SL, updates `state.json`
-- `.github/workflows/trade.yml` - runs every 15 min, commits `state.json`
-- `index.html` - read-only dashboard (GitHub Pages)
-
-Paper trading only. No real funds or exchange account.
+# SNIPER - Weekly Stochastic RSI (paper trading)
+BTC weekly StochRSI (14,14,3,3). Buy zone <15 (DCA, one slice/day), deploy rest on bullish %K/%D cross. Sell zone >80, exit on bearish cross.
+Data: Kraken weekly candles (CoinGecko fallback). Runs hourly via GitHub Actions; dashboard = index.html. Paper only.

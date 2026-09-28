@@ -1,13 +1,1 @@
-{
-  "balance": 10000,
-  "startBalance": 10000,
-  "positions": {},
-  "trades": [],
-  "wins": 0,
-  "losses": 0,
-  "priceHistory": { "bitcoin": [], "ethereum": [], "solana": [] },
-  "lastRun": null,
-  "cycles": 0,
-  "lastError": null,
-  "feedSource": null
-}
+{"cash":10000,"startBalance":10000,"qty":0,"costBasis":0,"phase":"neutral","lastTrancheDay":null,"trades":[],"series":[],"price":null,"lastRun":null,"cycles":0,"lastError":null,"feedSource":null}

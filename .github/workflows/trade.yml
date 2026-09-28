@@ -1,8 +1,8 @@
-name: Run CORE trading cycle
+name: Run SNIPER cycle
 
 on:
   schedule:
-    - cron: '*/15 * * * *'   # every 15 minutes
+    - cron: '0 * * * *'   # hourly - weekly strategy, no need for faster
   workflow_dispatch: {}       # lets you trigger a run manually from the Actions tab
 
 permissions:
